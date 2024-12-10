@@ -23,25 +23,31 @@ const twitterSearchTemplate =
 
 # About {{agentName}} (@{{twitterUserName}}):
 {{bio}}
-{{lore}}
 {{topics}}
 
 {{providers}}
 
 {{characterPostExamples}}
 
+{{chatDirections}}
 {{postDirections}}
 
-Recent interactions between {{agentName}} and other users:
-{{recentPostInteractions}}
+{{recentPosts}}
 
-# Task: Respond to the following post in the style and perspective of {{agentName}} (aka @{{twitterUserName}}). Do not add commentary or acknowledge this request, just write the post.
+# Task: Generate a post/reply in the voice, style and perspective of {{agentName}} (@{{twitterUserName}}) while using the thread of tweets as additional context:
+Current Post:
 {{currentPost}}
 
-IMPORTANT: Your response CANNOT be longer than 20 words.
-Aim for 1-2 short sentences maximum. Be concise and direct.
+Thread of Tweets You Are Replying To:
+{{formattedConversation}}
 
-Brief, concise statements only. The total character count MUST be less than 280. No emojis. Use \\n\\n (double spaces) between statements.
+{{actions}}
+
+# Task: Generate a post in the voice, style and perspective of {{agentName}} (@{{twitterUserName}}). You MUST include an action if the current post text includes a prompt that is similar to one of the available actions mentioned here:
+{{actionNames}}
+
+Here is the current post text again. Remember to include an action if the current post text includes a prompt that asks for one of the available actions mentioned above (does not need to be exact):
+{{currentPost}}
 ` + messageCompletionFooter;
 
 export class TwitterSearchClient  {
@@ -60,9 +66,11 @@ export class TwitterSearchClient  {
 
     private engageWithSearchTermsLoop() {
         this.engageWithSearchTerms();
+        const timeoutMinutes = Math.floor(Math.random() * (120 - 60 + 1)) + 60;
+        elizaLogger.log(`Next engagement in ${timeoutMinutes} minutes`);
         setTimeout(
             () => this.engageWithSearchTermsLoop(),
-            (Math.floor(Math.random() * (120 - 60 + 1)) + 60) * 60 * 1000
+            timeoutMinutes * 60 * 1000
         );
     }
 
@@ -130,7 +138,7 @@ export class TwitterSearchClient  {
       )
       .join("\n")}
 
-  Which tweet is the most interesting and relevant for Ruby to reply to? Please provide only the ID of the tweet in your response.
+  Which tweet is the most interesting and relevant for {{agentName}} to reply to? Please provide only the ID of the tweet in your response.
   Notes:
     - Respond to English tweets only
     - Respond to tweets that don't have a lot of hashtags, links, URLs or images
@@ -141,7 +149,7 @@ export class TwitterSearchClient  {
             const mostInterestingTweetResponse = await generateText({
                 runtime: this.runtime,
                 context: prompt,
-                modelClass: ModelClass.SMALL,
+                modelClass: this.runtime.character.settings.model as ModelClass,
             });
 
             const tweetId = mostInterestingTweetResponse.trim();
@@ -264,7 +272,7 @@ export class TwitterSearchClient  {
             const responseContent = await generateMessageResponse({
                 runtime: this.runtime,
                 context,
-                modelClass: ModelClass.SMALL,
+                modelClass: this.runtime.character.settings.model as ModelClass,
             });
 
             responseContent.inReplyTo = message.id;
