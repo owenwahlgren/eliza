@@ -10,6 +10,8 @@ import {
 } from "@ai16z/eliza";
 import { elizaLogger } from "@ai16z/eliza";
 import { ClientBase } from "./base.ts";
+import fs from 'fs';
+import path from 'path';
 
 const twitterPostTemplate = `
 # Areas of Expertise
@@ -17,7 +19,6 @@ const twitterPostTemplate = `
 
 # About {{agentName}} (@{{twitterUserName}}):
 {{bio}}
-{{lore}}
 {{topics}}
 
 {{providers}}
@@ -28,9 +29,8 @@ const twitterPostTemplate = `
 
 # Task: Generate a post in the voice and style and perspective of {{agentName}} @{{twitterUserName}}.
 Write a 1-3 sentence post that is {{adjective}} about {{topic}} (without mentioning {{topic}} directly), from the perspective of {{agentName}}. Do not add commentary or acknowledge this request, just write the post.
-Your response should not contain any questions. Brief, concise statements only. The total character count MUST be less than 280. No emojis. Use \\n\\n (double spaces) between statements.`;
-
-const MAX_TWEET_LENGTH = 280;
+Your response should not contain any questions. Brief, concise statements only. The total character count MUST be less than {{maxTweetLength}}. No emojis. Use \\n\\n (double spaces) between statements.`
+const MAX_TWEET_LENGTH = 400;
 
 /**
  * Truncate text to fit within the Twitter character limit, ensuring it ends at a complete sentence.
@@ -147,6 +147,7 @@ export class TwitterPostClient {
                 },
                 {
                     twitterUserName: this.client.profile.username,
+                    maxTweetLength: 400,
                 }
             );
 
@@ -162,7 +163,7 @@ export class TwitterPostClient {
             const newTweetContent = await generateText({
                 runtime: this.runtime,
                 context,
-                modelClass: ModelClass.SMALL,
+                modelClass: this.runtime.character.settings.model as ModelClass,
             });
 
             // Replace \n with proper line breaks and trim excess spaces
@@ -177,6 +178,35 @@ export class TwitterPostClient {
                 elizaLogger.info(
                     `Dry run: would have posted tweet: ${content}`
                 );
+                const tweetData = {
+                    content,
+                    timestamp: Date.now(),
+                };
+
+                const filePath = path.join(path.dirname(new URL(import.meta.url).pathname), 'tweetData.json');
+                const dirPath = path.dirname(filePath);
+
+                try {
+                    await fs.promises.mkdir(dirPath, { recursive: true });
+                    let existingData = {};
+
+                    try {
+                        const fileContent = await fs.promises.readFile(filePath, 'utf8');
+                        existingData = JSON.parse(fileContent);
+                    } catch (error) {
+                        // If file doesn't exist or is empty, use empty object
+                    }
+
+                    // Append new tweet data to existing data
+                    const updatedData = Array.isArray(existingData)
+                        ? [...existingData, tweetData]
+                        : [tweetData];
+
+                    await fs.promises.writeFile(filePath, JSON.stringify(updatedData, null, 2));
+                    elizaLogger.info(`Tweet data appended to ${filePath}`);
+                } catch (error) {
+                    elizaLogger.error(`Error saving tweet data: ${error}`);
+                }
                 return;
             }
 

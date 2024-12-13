@@ -16,44 +16,35 @@ import { ClientBase } from "./base";
 import { buildConversationThread, sendTweet, wait } from "./utils.ts";
 
 const twitterSearchTemplate =
-    `{{timeline}}
+    `
+{{timeline}}
 
-# Areas of Expertise
-{{knowledge}}
+Recent interactions between {{agentName}} and other users:
+{{recentPostInteractions}}
 
-# About {{agentName}} (@{{twitterUserName}}):
+About {{agentName}} (@{{twitterUserName}}):
 {{bio}}
 {{topics}}
-
 {{providers}}
 
 {{characterPostExamples}}
-
-{{chatDirections}}
 {{postDirections}}
 
 {{recentPosts}}
 
-# Task: Generate a post/reply in the voice, style and perspective of {{agentName}} (@{{twitterUserName}}) while using the thread of tweets as additional context:
-Current Post:
+# Task: Respond to the following post in the style and perspective of {{agentName}} (aka @{{twitterUserName}}). Write a {{adjective}} response for {{agentName}} to say directly in response to the post. don't generalize.
 {{currentPost}}
 
-Thread of Tweets You Are Replying To:
-{{formattedConversation}}
+IMPORTANT: Your response CANNOT be longer than 280 characters.
+Aim for 1-2 short sentences maximum. Be concise and direct.
 
-{{actions}}
+Your response should not contain any questions. Brief, concise statements only. No emojis. Use \\n\\n (double spaces) between statements.
 
-# Task: Generate a post in the voice, style and perspective of {{agentName}} (@{{twitterUserName}}). You MUST include an action if the current post text includes a prompt that is similar to one of the available actions mentioned here:
-{{actionNames}}
-
-Here is the current post text again. Remember to include an action if the current post text includes a prompt that asks for one of the available actions mentioned above (does not need to be exact):
-{{currentPost}}
 ` + messageCompletionFooter;
 
 export class TwitterSearchClient  {
     client: ClientBase;
     runtime: IAgentRuntime;
-    private respondedTweets: Set<string> = new Set();
 
     constructor(client: ClientBase, runtime: IAgentRuntime) {
         this.client = client;
@@ -82,7 +73,7 @@ export class TwitterSearchClient  {
             ];
 
             elizaLogger.log("Fetching search tweets");
-            // TODO: we wait 5 seconds here to avoid getting rate limited on startup, but we should queue
+            // TODO: we wait 10 seconds here to avoid getting rate limited on startup, but we should queue
             await new Promise((resolve) => setTimeout(resolve, 10000));
             const recentTweets = await this.client.fetchSearchTweets(
                 searchTerm,
@@ -91,8 +82,6 @@ export class TwitterSearchClient  {
             );
             elizaLogger.log("Search tweets fetched");
 
-            // const homeTimeline = await this.twitterClient.fetchHomeTimeline(20, []);
-            // console.log(homeTimeline);
             await this.client.cacheTimeline(recentTweets.tweets);
 
             const formattedHomeTimeline =
@@ -103,7 +92,6 @@ export class TwitterSearchClient  {
                     })
                     .join("\n");
 
-            // elizaLogger.log(formattedHomeTimeline)
             // randomly slice .tweets down to 20
             const slicedTweets = recentTweets.tweets
                 .sort(() => Math.random() - 0.5)
@@ -165,6 +153,14 @@ export class TwitterSearchClient  {
             }
 
             elizaLogger.log("Selected tweet to reply to:", selectedTweet?.text);
+
+            const tweetIdmemory = stringToUuid(tweetId + "-" + this.runtime.agentId)
+            const memory = await this.runtime.messageManager.getMemoryById(tweetIdmemory);
+
+            if (memory) {
+                elizaLogger.log("Memory found. Already replied to this tweet");
+                return;
+            }
 
             if (
                 selectedTweet.username ===
@@ -303,10 +299,6 @@ export class TwitterSearchClient  {
 
                 const responseMessages = await callback(response);
 
-                state = (await this.runtime.updateRecentMessageState(
-                    state
-                )) as State;
-
                 for (const responseMessage of responseMessages) {
                     if (
                         responseMessage ===
@@ -320,6 +312,10 @@ export class TwitterSearchClient  {
                         responseMessage
                     );
                 }
+
+                state = (await this.runtime.updateRecentMessageState(
+                    state
+                )) as State;
 
                 await this.runtime.evaluate(message, state);
 

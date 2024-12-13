@@ -14,6 +14,8 @@ import {
     stringToUuid,
     elizaLogger,
     getEmbeddingZeroVector,
+    IImageDescriptionService,
+    ServiceType,
 } from "@ai16z/eliza";
 import { ClientBase } from "./base";
 import { buildConversationThread, sendTweet, wait } from "./utils.ts";
@@ -25,7 +27,6 @@ export const twitterMessageHandlerTemplate =
 
 # About {{agentName}} (@{{twitterUserName}}):
 {{bio}}
-{{lore}}
 {{topics}}
 
 {{providers}}
@@ -39,16 +40,10 @@ Recent interactions between {{agentName}} and other users:
 
 {{recentPosts}}
 
-# Task: Generate a post/reply in the voice, style and perspective of {{agentName}} (@{{twitterUserName}}) while using the thread of tweets as additional context:
-Current Post:
-{{currentPost}}
+# Task: Generate a post in the voice, style and perspective of {{agentName}} (@{{twitterUserName}}). You MUST include an action if the current post text includes a prompt that is similar to one of the available actions mentioned here:
+{{actionNames}}
 
-Thread of Tweets You Are Replying To:
-{{formattedConversation}}
-
-{{actions}}
-
-# Task: Generate a post in the voice, style and perspective of {{agentName}} (@{{twitterUserName}}). Include an action, if appropriate. {{actionNames}}:
+Here is the current post text again. Remember to include an action if the current post text includes a prompt that asks for one of the available actions mentioned above (does not need to be exact):
 {{currentPost}}
 ` + messageCompletionFooter;
 
@@ -60,8 +55,7 @@ Response options are RESPOND, IGNORE and STOP .
 {{agentName}} should respond to messages that are directed at them, or participate in conversations that are interesting or relevant to their background, IGNORE messages that are irrelevant to them, and should STOP if the conversation is concluded.
 
 {{agentName}} is in a room with other users and wants to be conversational, but not annoying.
-{{agentName}} should RESPOND to messages that are directed at them, or participate in conversations that are interesting or relevant to their background.
-If a message is not interesting or relevant, {{agentName}} should IGNORE.
+{{agentName}} must RESPOND to messages that are directed at them, a command towards them, or participate in conversations that are interesting or relevant to their background.If a message is not interesting or relevant, {{agentName}} should IGNORE.
 Unless directly RESPONDing to a user, {{agentName}} should IGNORE messages that are very short or do not contain much information.
 If a user asks {{agentName}} to stop talking, {{agentName}} should STOP.
 If {{agentName}} concludes a conversation and isn't part of the conversation anymore, {{agentName}} should STOP.
@@ -239,12 +233,25 @@ export class TwitterInteractionClient {
             )
             .join("\n\n");
 
-        elizaLogger.debug("formattedConversation: ", formattedConversation);
+        const imageDescriptions = [];
+        for (const photo of tweet.photos) {
+            const description = await this.runtime
+                .getService<IImageDescriptionService>(
+                    ServiceType.IMAGE_DESCRIPTION
+                )
+                .describeImage(photo.url);
+            imageDescriptions.push(description);
+        }
+
+        const imageDescriptionsText = imageDescriptions.join("\n");
+        const currentPostWithImages = `${currentPost}\n\nImage Descriptions:\n${imageDescriptionsText}`;
+        elizaLogger.debug("formattedPostWithImage: ", currentPostWithImages);
+
 
         let state = await this.runtime.composeState(message, {
             twitterClient: this.client.twitterClient,
             twitterUserName: this.runtime.getSetting("TWITTER_USERNAME"),
-            currentPost,
+            currentPostWithImages,
             formattedConversation,
         });
 

@@ -18,7 +18,7 @@ import { stringToUuid } from "@ai16z/eliza";
 import { generateMessageResponse, generateShouldRespond } from "@ai16z/eliza";
 import { messageCompletionFooter, shouldRespondFooter } from "@ai16z/eliza";
 
-const MAX_MESSAGE_LENGTH = 4096; // Telegram's max message length
+const MAX_MESSAGE_LENGTH = 4000; // Telegram's max message length
 
 const telegramShouldRespondTemplate =
     `# About {{agentName}}:
@@ -51,14 +51,6 @@ Result: [IGNORE]
 {{user1}}: Hey {{agent}}, can I ask you a question
 {{agentName}}: Sure, what is it
 {{user1}}: can you ask claude to create a basic react module that demonstrates a counter
-Result: [RESPOND]
-
-{{user1}}: {{agentName}} can you tell me a story
-{{agentName}}: uhhh...
-{{user1}}: please do it
-{{agentName}}: okay
-{{agentName}}: once upon a time, in a quaint little village, there was a curious girl named elara
-{{user1}}: I'm loving it, keep going
 Result: [RESPOND]
 
 {{user1}}: {{agentName}} stop responding plz
@@ -101,13 +93,12 @@ const telegramMessageHandlerTemplate =
 {{actionExamples}}
 (Action examples are for reference only. Do not use the information from them in your response.)
 
-# Knowledge
+# Knowledge:
 {{knowledge}}
 
-# Task: Generate dialog and actions for the character {{agentName}}.
+# Task: Generate dialog and actions for the character {{agentName}}. DO NOT CREATE INVALID LINKS. USE FULL PATH FROM KNOWLEDGE.
 About {{agentName}}:
 {{bio}}
-{{lore}}
 
 Examples of {{agentName}}'s dialog and actions:
 {{characterMessageExamples}}
@@ -194,8 +185,8 @@ export class MessageManager {
             return true;
         }
 
-        // Respond to private chats
-        if (message.chat.type === "private") {
+        // Respond to only the owner in private chats
+        if (message.chat.type === "private" && message.chat.username === "owenwahlgren") {
             return true;
         }
 
@@ -222,7 +213,7 @@ export class MessageManager {
             const response = await generateShouldRespond({
                 runtime: this.runtime,
                 context: shouldRespondContext,
-                modelClass: ModelClass.SMALL,
+                modelClass: ModelClass.LARGE,
             });
 
             return response === "RESPOND";
@@ -289,7 +280,7 @@ export class MessageManager {
         const response = await generateMessageResponse({
             runtime: this.runtime,
             context,
-            modelClass: ModelClass.SMALL,
+            modelClass: ModelClass.LARGE,
         });
 
         if (!response) {
@@ -460,7 +451,7 @@ export class MessageManager {
                                     this.runtime.agentId
                             ),
                             agentId,
-                            userId,
+                            userId: agentId,
                             roomId,
                             content: {
                                 ...content,
